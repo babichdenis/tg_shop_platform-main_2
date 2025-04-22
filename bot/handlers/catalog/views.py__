@@ -1,0 +1,345 @@
+import logging
+from aiogram import Router, F
+from aiogram.types import Message, CallbackQuery
+from aiogram.exceptions import TelegramBadRequest
+from asgiref.sync import sync_to_async
+from bot.handlers.cart.models import async_get_or_create_user
+from bot.core.config import SUBSCRIPTION_CHANNEL_ID, SUBSCRIPTION_GROUP_ID
+from bot.handlers.start.subscriptions import check_subscriptions
+from .breadcrumbs import get_category_path
+from .data import get_categories, get_products_page
+from .keyboards import build_categories_keyboard, build_products_keyboard
+
+router = Router()
+
+# Настройка логирования
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+logger.info(
+    "Загружен views.py версии 2025-04-22 с sync_to_async для get_category_path")
+
+
+async def safe_edit_message(callback: CallbackQuery, text: str, reply_markup=None) -> None:
+    """
+    Безопасное редактирование сообщения.
+    """
+    logger.debug(f"Вызов safe_edit_message с text типа {type(text)}")
+    if not isinstance(text, str):
+        logger.error(
+            f"Ожидалась строка для текста сообщения, получен {type(text)}: {text}")
+        text = "❌ Ошибка отображения каталога. Пожалуйста, попробуйте снова."
+
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=reply_markup,
+            parse_mode="HTML"
+        )
+        logger.debug(f"Сообщение успешно отредактировано: {text[:50]}...")
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e).lower():
+            logger.debug(
+                f"Сообщение не изменено (уже актуально): {text[:50]}...")
+        else:
+            logger.error(f"Ошибка при редактировании сообщения: {e}")
+            try:
+                await callback.message.delete()
+                await callback.message.answer(
+                    text,
+                    reply_markup=reply_markup,
+                    parse_mode="HTML"
+                )
+            except Exception as delete_error:
+                logger.error(
+                    f"Ошибка при удалении и отправке нового сообщения: {delete_error}")
+                await callback.message.answer(
+                    text,
+                    reply_markup=reply_markup,
+                    parse_mode="HTML"
+                )
+    except Exception as e:
+        logger.error(f"Неизвестная ошибка при редактировании сообщения: {e}")
+        try:
+            await callback.message.delete()
+            await callback.message.answer(
+                text,
+                reply_markup=reply_markup,
+                parse_mode="HTML"
+            )
+        except Exception as delete_error:
+            logger.error(
+                f"Ошибка при удалении и отправке нового сообщения: {delete_error}")
+            await callback.message.answer(
+                text,
+                reply_markup=reply_markup,
+                parse_mode="HTML"
+            )
+
+# --- Обработчики ---
+
+
+@router.message(F.text == "/catalog")
+async def catalog_command(message: Message) -> None:
+    """
+    Обработчик команды /catalog для открытия каталога.
+    """
+    try:
+        user_id = message.from_user.id
+        logger.info(f"Пользователь {user_id} вызвал команду /catalog.")
+
+        # Проверка подписки
+        if SUBSCRIPTION_CHANNEL_ID or SUBSCRIPTION_GROUP_ID:
+            subscription_result, message_text = await check_subscriptions(message.bot, user_id, "/catalog")
+            if not subscription_result:
+                await message.answer(
+                    message_text,
+                    disable_web_page_preview=True,
+                    parse_mode="HTML"
+                )
+                return
+
+        # Получаем текст, категории и общее количество страниц
+        logger.debug(f"Вызов get_categories('root', 1) в /catalog")
+        result = await get_categories("root", 1)
+        logger.info(f"Результат get_categories в /catalog: {result}")
+        if not isinstance(result, tuple):
+            logger.error(
+                f"get_categories вернул не кортеж: {type(result)}: {result}")
+            raise ValueError(
+                f"get_categories вернул не кортеж: {type(result)}")
+        text, categories, total_pages = result
+        if not isinstance(text, str):
+            logger.error(
+                f"get_categories вернул не строку в text: {type(text)}: {text}")
+            text = "❌ Ошибка загрузки каталога."
+
+        # Получаем данные пользователя
+        user, _ = await async_get_or_create_user(
+            tg_id=user_id,
+            first_name=message.from_user.first_name,
+            last_name=message.from_user.last_name,
+            username=message.from_user.username,
+            language_code=message.from_user.language_code
+        )
+
+        # Формируем клавиатуру для категорий
+        keyboard = await build_categories_keyboard(categories, "root", 1, total_pages, user)
+
+        # Отправляем сообщение
+        await message.answer(
+            text,
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+
+    except Exception as e:
+        logger.error(f"Ошибка при выполнении команды /catalog: {e}")
+        await message.answer("❌ Произошла ошибка при открытии каталога", parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("cat_page_"))
+async def categories_pagination(callback: CallbackQuery) -> None:
+    """
+    Обработчик для отображения категорий с пагинацией.
+    """
+    try:
+        # Разбираем callback_data (формат: "cat_page_<parent_id>_<page>")
+        parts = callback.data.split("_")
+        if len(parts) != 4:
+            raise ValueError(f"Неверный формат callback_data: {callback.data}")
+
+        parent_id = parts[2]
+        page = int(parts[3])
+        user_id = callback.from_user.id
+        logger.info(
+            f"Пользователь {user_id} запросил категории, parent_id={parent_id}, страница {page}.")
+
+        # Получаем текст, категории и общее количество страниц
+        logger.debug(f"Вызов get_categories('{parent_id}', {page}) в cat_page")
+        result = await get_categories(parent_id, page)
+        logger.info(f"Результат get_categories в cat_page: {result}")
+        if not isinstance(result, tuple):
+            logger.error(
+                f"get_categories вернул не кортеж: {type(result)}: {result}")
+            raise ValueError(
+                f"get_categories вернул не кортеж: {type(result)}")
+        text, categories, total_pages = result
+        if not isinstance(text, str):
+            logger.error(
+                f"get_categories вернул не строку в text: {type(text)}: {text}")
+            text = "❌ Ошибка загрузки категорий."
+
+        # Получаем данные пользователя
+        user, _ = await async_get_or_create_user(
+            tg_id=user_id,
+            first_name=callback.from_user.first_name,
+            last_name=callback.from_user.last_name,
+            username=callback.from_user.username,
+            language_code=callback.from_user.language_code
+        )
+
+        # Проверяем, есть ли подкатегории
+        if parent_id != "root":
+            _, subcategories, _ = await get_categories(parent_id, 1)
+            if not subcategories:
+                # Если подкатегорий нет, показываем товары
+                products, total_count = await get_products_page(int(parent_id), page)
+                if products:
+                    # Обёртываем в sync_to_async
+                    breadcrumb = await sync_to_async(get_category_path)(parent_id)
+                    if not isinstance(breadcrumb, str):
+                        logger.error(
+                            f"get_category_path вернул не строку: {type(breadcrumb)}: {breadcrumb}")
+                        breadcrumb = "🛍️ Каталог"
+                    kb = await build_products_keyboard(int(parent_id), page, products, total_count, user)
+                    await safe_edit_message(callback, f"{breadcrumb}\n\n🛍️ Выберите товар:", kb)
+                    await callback.answer()
+                    return
+                else:
+                    # Обёртываем в sync_to_async
+                    breadcrumb = await sync_to_async(get_category_path)(parent_id)
+                    if not isinstance(breadcrumb, str):
+                        logger.error(
+                            f"get_category_path вернул не строку: {type(breadcrumb)}: {breadcrumb}")
+                        breadcrumb = "🛍️ Каталог"
+                    text = f"{breadcrumb}\n\nТовары не найдены."
+
+        # Формируем клавиатуру для категорий
+        keyboard = await build_categories_keyboard(categories, parent_id, page, total_pages, user)
+
+        # Обновляем сообщение
+        await safe_edit_message(callback, text, keyboard)
+
+    except ValueError as e:
+        logger.error(f"Ошибка формата данных: {e}")
+        await callback.answer("❌ Неверный формат данных", show_alert=True)
+    except Exception as e:
+        logger.error(f"Ошибка при отображении категорий: {str(e)}")
+        await callback.answer("❌ Произошла ошибка при отображении категорий", show_alert=True)
+    finally:
+        await callback.answer()
+
+
+@router.callback_query(F.data.startswith("prod_page_"))
+async def products_pagination(callback: CallbackQuery) -> None:
+    """
+    Обработчик пагинации товаров.
+    """
+    try:
+        parts = callback.data.split("_")
+        if len(parts) != 4:
+            raise ValueError(f"Неверный формат callback_data: {callback.data}")
+
+        category_id = int(parts[2])
+        page = int(parts[3])
+        logger.info(
+            f"Пагинация товаров для category_id {category_id}, страница {page}.")
+
+        # Получаем данные пользователя
+        user, _ = await async_get_or_create_user(
+            tg_id=callback.from_user.id,
+            first_name=callback.from_user.first_name,
+            last_name=callback.from_user.last_name,
+            username=callback.from_user.username,
+            language_code=callback.from_user.language_code
+        )
+
+        # Получаем товары
+        products, total_count = await get_products_page(category_id, page)
+
+        if not products:
+            logger.warning(
+                f"Товары не найдены для категории ID {category_id}, страница {page}.")
+            # Обёртываем в sync_to_async
+            breadcrumb = await sync_to_async(get_category_path)(str(category_id))
+            if not isinstance(breadcrumb, str):
+                logger.error(
+                    f"get_category_path вернул не строку: {type(breadcrumb)}: {breadcrumb}")
+                breadcrumb = "🛍️ Каталог"
+            await safe_edit_message(callback, f"{breadcrumb}\n\nТовары не найдены.", None)
+            await callback.answer()
+            return
+
+        # Формируем клавиатуру для товаров
+        # Обёртываем в sync_to_async
+        breadcrumb = await sync_to_async(get_category_path)(str(category_id))
+        if not isinstance(breadcrumb, str):
+            logger.error(
+                f"get_category_path вернул не строку: {type(breadcrumb)}: {breadcrumb}")
+            breadcrumb = "🛍️ Каталог"
+        kb = await build_products_keyboard(category_id, page, products, total_count, user)
+        await safe_edit_message(callback, f"{breadcrumb}\n\n🛍️ Выберите товар:", kb)
+
+    except ValueError as e:
+        logger.error(f"Ошибка формата данных: {e}")
+        await callback.answer("❌ Неверный формат данных", show_alert=True)
+    except Exception as e:
+        logger.error(f"Ошибка при пагинации товаров: {str(e)}")
+        await callback.answer("❌ Произошла ошибка при отображении товаров", show_alert=True)
+    finally:
+        await callback.answer()
+
+
+@router.callback_query(F.data == "catalog")
+async def catalog_callback(callback: CallbackQuery) -> None:
+    """
+    Обработчик нажатия кнопки 'Каталог'.
+    """
+    try:
+        user_id = callback.from_user.id
+        logger.info(f"Пользователь {user_id} нажал кнопку 'Каталог'.")
+
+        # Проверка подписки
+        if SUBSCRIPTION_CHANNEL_ID or SUBSCRIPTION_GROUP_ID:
+            subscription_result, message_text = await check_subscriptions(callback.bot, user_id, "catalog")
+            if not subscription_result:
+                try:
+                    await callback.message.edit_text(
+                        message_text,
+                        disable_web_page_preview=True,
+                        parse_mode="HTML"
+                    )
+                except TelegramBadRequest:
+                    await callback.message.answer(
+                        message_text,
+                        disable_web_page_preview=True,
+                        parse_mode="HTML"
+                    )
+                await callback.answer()
+                return
+
+        # Получаем текст, категории и общее количество страниц
+        logger.debug(f"Вызов get_categories('root', 1) в catalog_callback")
+        result = await get_categories("root", 1)
+        logger.info(f"Результат get_categories в catalog_callback: {result}")
+        if not isinstance(result, tuple):
+            logger.error(
+                f"get_categories вернул не кортеж: {type(result)}: {result}")
+            raise ValueError(
+                f"get_categories вернул не кортеж: {type(result)}")
+        text, categories, total_pages = result
+        if not isinstance(text, str):
+            logger.error(
+                f"get_categories вернул не строку в text: {type(text)}: {text}")
+            text = "❌ Ошибка загрузки каталога."
+
+        # Получаем данные пользователя
+        user, _ = await async_get_or_create_user(
+            tg_id=user_id,
+            first_name=callback.from_user.first_name,
+            last_name=callback.from_user.last_name,
+            username=callback.from_user.username,
+            language_code=callback.from_user.language_code
+        )
+
+        # Формируем клавиатуру для категорий
+        keyboard = await build_categories_keyboard(categories, "root", 1, total_pages, user)
+
+        # Обновляем сообщение
+        await safe_edit_message(callback, text, keyboard)
+
+    except Exception as e:
+        logger.error(f"Ошибка при выполнении callback 'catalog': {e}")
+        await callback.answer("❌ Произошла ошибка при открытии каталога", show_alert=True)
+    finally:
+        await callback.answer()

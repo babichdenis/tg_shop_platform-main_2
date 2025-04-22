@@ -1,0 +1,39 @@
+bot/
+├── core/
+│   ├── __init__.py
+│   ├── bot_setup.py          # инициализация бота и диспетчера
+│   ├── config.py             # конфигурация и константы
+│   ├── middlewares.py        # кастомные middleware
+│   ├── utils.py              # общие утилиты
+│   └── logging_config.py     # настройка логирования
+├── handlers/
+│   ├── __init__.py           # экспорт роутеров
+│   ├── start/
+│   │   ├── __init__.py
+│   │   ├── commands.py       # команды /start, /help
+│   │   ├── callbacks.py      # callback_query обработчики
+│   │   └── subscriptions.py  # проверка подписки
+│   ├── product/
+│   │   ├── __init__.py
+│   │   ├── handlers.py
+│   │   ├── keyboards.py
+│   │   └── models.py
+│   ├── cart/
+│   │   ├── __init__.py
+│   │   ├── handlers.py
+│   │   ├── keyboards.py
+│   │   ├── states.py
+│   │   ├── models.py
+│   │   └── utils.py
+│   ├── faq/
+│   │   ├── __init__.py
+│   │   ├── handlers.py
+│   │   ├── keyboards.py
+│   │   └── utils.py
+│   └── catalog/
+│       ├── __init__.py
+│       ├── handlers.py
+│       ├── keyboards.py
+│       └── utils.py
+├── data/
+├── tests/
