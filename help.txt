@@ -37,3 +37,9 @@ bot/
 │       └── utils.py
 ├── data/
 ├── tests/
+
+docker-compose down
+find . -name "__pycache__" -exec rm -rf {} +
+find . -name "*.pyc" -exec rm -f {} +
+docker-compose build --no-cache
+docker-compose up -d
