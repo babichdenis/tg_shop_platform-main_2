@@ -1,8 +1,9 @@
 import logging
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from bot.core.config import PRICE_DECIMAL_PLACES
 
 logger = logging.getLogger(__name__)
-logger.info("Загружен product/keyboards.py версии 2025-04-23-4")
+logger.info("Загружен product/keyboards.py версии 2025-04-23-7")
 
 
 def product_detail_keyboard(
@@ -14,6 +15,9 @@ def product_detail_keyboard(
 ) -> InlineKeyboardMarkup:
     """Создаёт клавиатуру для страницы продукта."""
     try:
+        # Форматирование цены корзины с учётом PRICE_DECIMAL_PLACES
+        cart_total_str = f"{cart_total:.{PRICE_DECIMAL_PLACES}f} ₽"
+
         buttons = [
             [
                 InlineKeyboardButton(
@@ -24,19 +28,20 @@ def product_detail_keyboard(
             ],
             [
                 InlineKeyboardButton(
-                    text=f"Добавить в корзину ({quantity} шт.)",
+                    text=f"🛍️ Добавить в корзину ({quantity} шт.)",
                     callback_data=f"add:{product_id}:{quantity}"
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text=f"🛒 Корзина: {cart_total} ₽ ({cart_quantity} шт.)" if cart_quantity > 0 else "🛒 Корзина: пуста",
+                    text=f"🛒 Корзина: {cart_total_str} ({cart_quantity} шт.)" if cart_quantity > 0 else "🛒 Корзина: пуста",
                     callback_data="cart"
                 )
             ],
             [
                 InlineKeyboardButton(text="⬅️ Назад", callback_data=back_data),
-                InlineKeyboardButton(text="В меню", callback_data="main_menu")
+                InlineKeyboardButton(
+                    text="📋 В меню", callback_data="main_menu")
             ]
         ]
         markup = InlineKeyboardMarkup(inline_keyboard=buttons)

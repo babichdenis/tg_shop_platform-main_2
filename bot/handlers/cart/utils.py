@@ -7,7 +7,7 @@ from aiogram.exceptions import TelegramBadRequest
 
 from .models import async_get_cart, async_get_cart_items, async_get_cart_details, async_get_cart_quantity, async_get_cart_total, async_get_order_details
 from .keyboards import generate_cart_keyboard, generate_back_keyboard, generate_skip_keyboard, generate_confirmation_keyboard, generate_empty_cart_keyboard
-from bot.core.config import SUBSCRIPTION_CHANNEL_ID, SUBSCRIPTION_GROUP_ID, CART_ITEMS_PER_PAGE
+from bot.core.config import SUBSCRIPTION_CHANNEL_ID, SUBSCRIPTION_GROUP_ID, CART_ITEMS_PER_PAGE, PRICE_DECIMAL_PLACES, CART_EMOJI, CART_LABEL, CART_CURRENCY, CART_EMPTY_TEXT
 from bot.handlers.start.subscriptions import check_subscriptions
 
 # Настройка логирования
@@ -162,7 +162,7 @@ async def show_cart(user, message: Message | CallbackQuery, page: int = 1) -> No
     items = await async_get_cart_items(user)
 
     if not items:
-        text = "🛒 Ваша корзина пуста"
+        text = f"{CART_EMOJI} {CART_LABEL}: {CART_EMPTY_TEXT}"
         kb = generate_empty_cart_keyboard()
         await _send_cart_message(message, text, kb)
         return
@@ -193,3 +193,18 @@ async def show_cart(user, message: Message | CallbackQuery, page: int = 1) -> No
     )
 
     await _send_cart_message(message, text, kb, photo=first_item_photo)
+
+
+def format_cart_button_text(cart_total: float, cart_quantity: int) -> str:
+    """Форматирует текст для кнопки корзины."""
+    try:
+        if cart_quantity > 0:
+            cart_total_str = f"{cart_total:.{PRICE_DECIMAL_PLACES}f} {CART_CURRENCY}"
+            text = f"{CART_EMOJI} {CART_LABEL}: {cart_total_str} ({cart_quantity} шт.)"
+        else:
+            text = f"{CART_EMOJI} {CART_LABEL}: {CART_EMPTY_TEXT}"
+        logger.debug(f"Сгенерирован текст кнопки корзины: {text}")
+        return text
+    except Exception as e:
+        logger.error(f"Ошибка при форматировании текста кнопки корзины: {e}")
+        return f"{CART_EMOJI} {CART_LABEL}: ошибка"

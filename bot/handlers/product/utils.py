@@ -1,10 +1,12 @@
 import logging
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, FSInputFile
+from aiogram.utils.markdown import hbold, hitalic
 from django_app.shop.models import Product
 from asgiref.sync import sync_to_async
+from bot.core.config import PRICE_DECIMAL_PLACES
 
 logger = logging.getLogger(__name__)
-logger.info("Загружен product/utils.py версии 2025-04-23-6")
+logger.info("Загружен product/utils.py версии 2025-04-23-10")
 
 
 @sync_to_async
@@ -70,11 +72,15 @@ async def generate_product_text(product: Product) -> str:
         category_path = " > ".join(
             reversed(category_path)) if category_path else "Без категории"
 
+        # Форматирование цены с учётом PRICE_DECIMAL_PLACES
+        price = float(product.price)
+        price_str = f"{price:.{PRICE_DECIMAL_PLACES}f} ₽"
+
         text = (
-            f"{product.name}\n"
-            f"Категория: {category_path}\n"
-            f"Цена: {product.price} ₽\n"
-            f"Описание: {product.description or 'Нет описания'}"
+            f"🏷️ {hitalic(category_path)}\n\n"
+            f"{hbold(product.name)}\n"
+            f"💰 {price_str}\n\n"
+            f"📝 {product.description or 'Нет описания'}"
         )
         logger.debug(f"Сгенерирован текст для продукта ID {product.id}")
         return text
@@ -102,12 +108,22 @@ async def handle_photo_message(
             cart_quantity=cart_quantity,
             back_data=back_data
         )
-        await callback.message.answer_photo(
-            photo=product.photo.url,
-            caption=text,
-            reply_markup=markup
-        )
-        logger.debug(f"Отправлено сообщение с фото продукта ID {product.id}")
+        if product.photo:
+            logger.debug(
+                f"Отправка фото для продукта ID {product.id}: {product.photo.path}")
+            await callback.message.delete()  # Удаляем старое сообщение
+            await callback.message.answer_photo(
+                photo=FSInputFile(product.photo.path),
+                caption=text,
+                reply_markup=markup,
+                parse_mode="HTML"
+            )
+            logger.debug(
+                f"Отправлено сообщение с фото продукта ID {product.id}")
+        else:
+            logger.debug(
+                f"Фото отсутствует для продукта ID {product.id}, отправка текста")
+            await handle_text_message(callback, product, text, back_data, 1, cart_total, cart_quantity)
     except Exception as e:
         logger.error(
             f"Ошибка при отправке фото для продукта ID {product.id}: {e}")
@@ -135,7 +151,8 @@ async def handle_text_message(
         )
         await callback.message.edit_text(
             text=text,
-            reply_markup=markup
+            reply_markup=markup,
+            parse_mode="HTML"
         )
         logger.debug(
             f"Отправлено текстовое сообщение для продукта ID {product.id}")

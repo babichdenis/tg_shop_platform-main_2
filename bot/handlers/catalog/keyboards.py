@@ -4,15 +4,19 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from asgiref.sync import sync_to_async
 from django_app.shop.models import Category, Product
 from bot.handlers.cart.models import async_get_cart_quantity, async_get_cart_total
+from bot.handlers.cart.utils import format_cart_button_text
 from bot.core.config import (
     CATEGORIES_PER_ROW, PRODUCTS_PER_ROW, MAX_BUTTON_TEXT_LENGTH,
-    CATEGORIES_PER_PAGE, PRODUCTS_PER_PAGE
+    CATEGORIES_PER_PAGE, PRODUCTS_PER_PAGE, PRICE_DECIMAL_PLACES, CART_CURRENCY,
+    PAGINATION_PREV_EMOJI, PAGINATION_NEXT_EMOJI, PAGINATION_TEXT_FORMAT,
+    PRICE_LIST_EMOJI, PRICE_LIST_LABEL, PRICE_LIST_CALLBACK,
+    BACK_BUTTON_EMOJI, BACK_BUTTON_TEXT, MENU_BUTTON_TEXT, NOOP_CALLBACK
 )
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 logger.info(
-    "Загружен keyboards.py версии 2025-04-22 с async_get_cart_quantity и поддержкой PER_ROW")
+    "Загружен keyboards.py версии 2025-04-23-2 с async_get_cart_quantity и поддержкой PER_ROW")
 
 
 @sync_to_async
@@ -63,22 +67,28 @@ async def build_categories_keyboard(categories: List[Category], parent_id: str, 
         pagination_buttons = []
         if page > 1:
             pagination_buttons.append(InlineKeyboardButton(
-                text="⬅️", callback_data=f"cat_page_{parent_id}_{page - 1}"
+                text=PAGINATION_PREV_EMOJI,
+                callback_data=f"cat_page_{parent_id}_{page - 1}"
             ))
         else:
             pagination_buttons.append(InlineKeyboardButton(
-                text="⬅️", callback_data="noop"
+                text=PAGINATION_PREV_EMOJI,
+                callback_data=NOOP_CALLBACK
             ))
         pagination_buttons.append(InlineKeyboardButton(
-            text=f"{page}/{total_pages}", callback_data="noop"
+            text=PAGINATION_TEXT_FORMAT.format(
+                page=page, total_pages=total_pages),
+            callback_data=NOOP_CALLBACK
         ))
         if page < total_pages:
             pagination_buttons.append(InlineKeyboardButton(
-                text="➡️", callback_data=f"cat_page_{parent_id}_{page + 1}"
+                text=PAGINATION_NEXT_EMOJI,
+                callback_data=f"cat_page_{parent_id}_{page + 1}"
             ))
         else:
             pagination_buttons.append(InlineKeyboardButton(
-                text="➡️", callback_data="noop"
+                text=PAGINATION_NEXT_EMOJI,
+                callback_data=NOOP_CALLBACK
             ))
         buttons.append(pagination_buttons)
 
@@ -86,13 +96,15 @@ async def build_categories_keyboard(categories: List[Category], parent_id: str, 
     try:
         cart_quantity = await async_get_cart_quantity(user)
         cart_total = await async_get_cart_total(user)
-        cart_text = f"🛒 Корзина: {cart_total} ₽ ({cart_quantity} шт.)" if cart_quantity > 0 else "🛒 Корзина: пуста"
+        cart_text = format_cart_button_text(cart_total, cart_quantity)
     except Exception as e:
         logger.error(
             f"Ошибка при получении данных корзины для пользователя {user.telegram_id}: {e}")
+        # Этот текст уже вынесен в cart/utils.py, оставляем как fallback
         cart_text = "🛒 Корзина: ошибка"
     buttons.append([InlineKeyboardButton(
-        text=cart_text, callback_data="cart"
+        text=cart_text,
+        callback_data="cart"
     )])
 
     # Кнопки "Назад" и "В меню"
@@ -108,8 +120,14 @@ async def build_categories_keyboard(categories: List[Category], parent_id: str, 
                 f"Ошибка при получении родительской категории для {parent_id}: {e}")
             back_callback = "main_menu"
     buttons.append([
-        InlineKeyboardButton(text="⬅️ Назад", callback_data=back_callback),
-        InlineKeyboardButton(text="В меню", callback_data="main_menu")
+        InlineKeyboardButton(
+            text=f"{BACK_BUTTON_EMOJI} {BACK_BUTTON_TEXT}",
+            callback_data=back_callback
+        ),
+        InlineKeyboardButton(
+            text=MENU_BUTTON_TEXT,
+            callback_data="main_menu"
+        )
     ])
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -132,7 +150,9 @@ async def build_products_keyboard(category_id: int, page: int, products: List[Pr
     # Группируем товары по PRODUCTS_PER_ROW в ряд
     row = []
     for product in products:
-        button_text = f"{product.name[:MAX_BUTTON_TEXT_LENGTH]} ({product.price} ₽)"
+        price = float(product.price)
+        price_str = f"{price:.{PRICE_DECIMAL_PLACES}f} {CART_CURRENCY}"
+        button_text = f"{product.name[:MAX_BUTTON_TEXT_LENGTH]} ({price_str})"
         row.append(InlineKeyboardButton(
             text=button_text,
             callback_data=f"product_{product.id}"
@@ -150,14 +170,18 @@ async def build_products_keyboard(category_id: int, page: int, products: List[Pr
         nav_buttons = []
         if page > 1:
             nav_buttons.append(InlineKeyboardButton(
-                text="⬅️", callback_data=f"prod_page_{category_id}_{page - 1}"
+                text=PAGINATION_PREV_EMOJI,
+                callback_data=f"prod_page_{category_id}_{page - 1}"
             ))
         nav_buttons.append(InlineKeyboardButton(
-            text=f"{page}/{max_page}", callback_data="noop"
+            text=PAGINATION_TEXT_FORMAT.format(
+                page=page, total_pages=max_page),
+            callback_data=NOOP_CALLBACK
         ))
         if page < max_page:
             nav_buttons.append(InlineKeyboardButton(
-                text="➡️", callback_data=f"prod_page_{category_id}_{page + 1}"
+                text=PAGINATION_NEXT_EMOJI,
+                callback_data=f"prod_page_{category_id}_{page + 1}"
             ))
         buttons.append(nav_buttons)
 
@@ -165,16 +189,19 @@ async def build_products_keyboard(category_id: int, page: int, products: List[Pr
     try:
         cart_quantity = await async_get_cart_quantity(user)
         cart_total = await async_get_cart_total(user)
-        cart_text = f"🛒 Корзина: {cart_total} ₽ ({cart_quantity} шт.)" if cart_quantity > 0 else "🛒 Корзина: пуста"
+        cart_text = format_cart_button_text(cart_total, cart_quantity)
     except Exception as e:
         logger.error(
             f"Ошибка при получении данных корзины для пользователя {user.telegram_id}: {e}")
+        # Этот текст уже вынесен в cart/utils.py, оставляем как fallback
         cart_text = "🛒 Корзина: ошибка"
     buttons.append([InlineKeyboardButton(
-        text="📋 Прайс-лист", callback_data="price_list_1"
+        text=f"{PRICE_LIST_EMOJI} {PRICE_LIST_LABEL}",
+        callback_data=PRICE_LIST_CALLBACK
     )])
     buttons.append([InlineKeyboardButton(
-        text=cart_text, callback_data="cart"
+        text=cart_text,
+        callback_data="cart"
     )])
 
     # Кнопки "Назад" и "В меню"
@@ -187,8 +214,14 @@ async def build_products_keyboard(category_id: int, page: int, products: List[Pr
             f"Ошибка при получении родительской категории для {category_id}: {e}")
         back_callback = "main_menu"
     buttons.append([
-        InlineKeyboardButton(text="⬅️ Назад", callback_data=back_callback),
-        InlineKeyboardButton(text="В меню", callback_data="main_menu")
+        InlineKeyboardButton(
+            text=f"{BACK_BUTTON_EMOJI} {BACK_BUTTON_TEXT}",
+            callback_data=back_callback
+        ),
+        InlineKeyboardButton(
+            text=MENU_BUTTON_TEXT,
+            callback_data="main_menu"
+        )
     ])
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
