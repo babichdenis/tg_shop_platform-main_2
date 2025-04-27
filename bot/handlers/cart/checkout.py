@@ -7,7 +7,7 @@ from aiogram.enums import ParseMode
 from aiogram.utils.text_decorations import html_decoration as html
 
 from .models import async_get_or_create_user, async_get_cart, async_get_cart_items, async_create_order, async_get_order_details
-from .keyboards import generate_edit_choice_keyboard
+from .keyboards import generate_edit_choice_keyboard, generate_back_keyboard, generate_skip_keyboard, generate_confirmation_keyboard  # Обновлённый импорт
 from .states import OrderState
 from .utils import (
     ensure_subscription, delete_previous_message, send_message_with_state,
