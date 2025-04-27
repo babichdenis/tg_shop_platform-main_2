@@ -63,6 +63,7 @@ async def generate_order_text(user, state: FSMContext, cart_id: int) -> tuple[st
     """Формирует текст с данными заказа."""
     data = await state.get_data()
     items_text, total, _ = await async_get_cart_details(cart_id)
+    formatted_total = f"{float(total):.{PRICE_DECIMAL_PLACES}f}"
     text = (
         f"📋 Проверьте данные заказа:\n\n"
         f"📍 Адрес: {html.quote(data.get('address'))}\n"
@@ -70,7 +71,7 @@ async def generate_order_text(user, state: FSMContext, cart_id: int) -> tuple[st
         f"💬 Пожелания: {html.quote(data.get('wishes')) if data.get('wishes') else 'Нет'}\n"
         f"⏰ Время доставки: {html.quote(data.get('desired_delivery_time')) if data.get('desired_delivery_time') else 'Не указано'}\n\n"
         f"🛒 Состав заказа:\n{items_text}\n\n"
-        f"💵 Итого: {html.bold(f'{total} ₽')}\n\n"
+        f"💵 Итого: {html.bold(f'{formatted_total} {CART_CURRENCY}')}\n\n"
     )
     return text, total
 
@@ -167,19 +168,22 @@ async def show_cart(user, message: Message | CallbackQuery, page: int = 1) -> No
         await _send_cart_message(message, text, kb)
         return
 
+    # Получаем активную корзину пользователя
+    cart = await async_get_cart(user)
+    cart_id = cart.id
+
     # Получаем данные корзины
     cart_quantity = await async_get_cart_quantity(user)
     cart_total = await async_get_cart_total(user)
-    items_text, _, first_item_photo = await async_get_cart_details(items[0].cart.id)
+    items_text, _, first_item_photo = await async_get_cart_details(cart_id)
 
     # Форматируем сумму
-    formatted_total = f"{int(cart_total)}" if isinstance(
-        cart_total, int) or cart_total == int(cart_total) else f"{cart_total:.2f}"
+    formatted_total = f"{float(cart_total):.{PRICE_DECIMAL_PLACES}f}"
 
     text = (
         f"{html.bold('Корзина:')}\n\n"
         f"{items_text}\n\n"
-        f"Всего {cart_quantity} шт. на сумму {html.bold(f'{formatted_total} ₽')}"
+        f"Всего {cart_quantity} шт. на сумму {html.bold(f'{formatted_total} {CART_CURRENCY}')}"
     )
 
     # Генерируем клавиатуру с пагинацией

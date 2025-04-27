@@ -5,6 +5,7 @@ import logging
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Sum, F
 from django_app.shop.models import TelegramUser, Cart, CartItem, Order, OrderItem
+from bot.core.config import SHOW_PARENT_CATEGORY, CATEGORY_SEPARATOR, CART_CURRENCY, PRICE_DECIMAL_PLACES
 
 # Проверка инициализации Django
 if not django.apps.apps.ready:
@@ -82,7 +83,7 @@ def get_cart_items(user):
             cart__user=user,
             cart__is_active=True,
             is_active=True
-        ).select_related("product").select_related("cart"))
+        ).select_related("product").select_related("product__category"))
         logger.info(
             f"Найдено {len(items)} активных элементов в корзине пользователя {user.telegram_id}.")
         return items
@@ -220,7 +221,7 @@ def get_cart_quantity(user):
     if not isinstance(user, TelegramUser):
         raise TypeError(f"Ожидается объект TelegramUser, получен {type(user)}")
     try:
-        cart = get_cart(user)  # Используем существующую функцию
+        cart = get_cart(user)
         quantity = cart.items.filter(is_active=True).aggregate(
             total=Sum('quantity'))['total'] or 0
         logger.info(f"Количество товаров в корзине ID {cart.id}: {quantity}.")
@@ -236,7 +237,7 @@ def get_cart_total(user):
     if not isinstance(user, TelegramUser):
         raise TypeError(f"Ожидается объект TelegramUser, получен {type(user)}")
     try:
-        cart = get_cart(user)  # Используем существующую функцию
+        cart = get_cart(user)
         total = cart.items.filter(is_active=True).aggregate(
             total=Sum(F('product__price') * F('quantity'))
         )['total'] or 0
@@ -253,15 +254,27 @@ def get_cart_details(cart_id):
     try:
         cart = Cart.objects.get(id=cart_id)
         items = CartItem.objects.filter(
-            cart=cart, is_active=True).select_related('product')
-        items_text = "\n".join(
-            f"{item.product.name}, {item.quantity} шт., {item.quantity * item.product.price}₽"
-            for item in items
-        )
-        total = sum(item.product.price * item.quantity for item in items)
+            cart=cart, is_active=True).select_related('product').select_related('product__category')
+        items_text_lines = []
+        for item in items:
+            product = item.product
+            # Приводим к float для форматирования
+            item_total = float(product.price) * item.quantity
+            formatted_item_total = f"{item_total:.{PRICE_DECIMAL_PLACES}f}"
+            if SHOW_PARENT_CATEGORY and product.category:
+                product_display = f"{product.category.name}{CATEGORY_SEPARATOR}{product.name}"
+            else:
+                product_display = product.name
+            items_text_lines.append(
+                f"{product_display}, {item.quantity} шт., {formatted_item_total}{CART_CURRENCY}"
+            )
+        items_text = "\n".join(items_text_lines)
+        total = sum(float(item.product.price) *
+                    item.quantity for item in items)  # Приводим к float
+        formatted_total = f"{total:.{PRICE_DECIMAL_PLACES}f}"
         first_item_photo = items[0].product.photo.url if items and items[0].product.photo else None
         logger.info(
-            f"Детали корзины ID {cart_id}: {len(items)} товаров, итого {total} ₽.")
+            f"Детали корзины ID {cart_id}: {len(items)} товаров, итого {formatted_total} ₽.")
         return items_text, total, first_item_photo
     except ObjectDoesNotExist:
         logger.error(f"Корзина ID {cart_id} не найдена.")
@@ -275,12 +288,23 @@ def get_order_details(order_id):
     """Возвращает детали заказа: текст и сумму."""
     try:
         items = OrderItem.objects.filter(
-            order_id=order_id).select_related('product')
-        items_text = "\n".join(
-            f"{item.product.name}, {item.quantity} шт., {item.quantity * item.product.price}₽"
-            for item in items
-        )
-        total = sum(item.product.price * item.quantity for item in items)
+            order_id=order_id).select_related('product').select_related('product__category')
+        items_text_lines = []
+        for item in items:
+            product = item.product
+            item_total = float(product.price) * \
+                item.quantity  # Приводим к float
+            formatted_item_total = f"{item_total:.{PRICE_DECIMAL_PLACES}f}"
+            if SHOW_PARENT_CATEGORY and product.category:
+                product_display = f"{product.category.name}{CATEGORY_SEPARATOR}{product.name}"
+            else:
+                product_display = product.name
+            items_text_lines.append(
+                f"{product_display}, {item.quantity} шт., {formatted_item_total}{CART_CURRENCY}"
+            )
+        items_text = "\n".join(items_text_lines)
+        total = sum(float(item.product.price) *
+                    item.quantity for item in items)  # Приводим к float
         logger.info(
             f"Детали заказа #{order_id}: {len(items)} товаров, итого {total} ₽.")
         return items_text, total

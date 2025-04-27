@@ -1,9 +1,17 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from bot.core.config import SHOW_PARENT_CATEGORY, CATEGORY_SEPARATOR, MAX_BUTTON_TEXT_LENGTH, CART_CURRENCY, PRICE_DECIMAL_PLACES
 
 
 def _format_number(value) -> str:
-    """Форматирует число: целое без десятичных, иначе с двумя знаками после запятой."""
-    return f"{int(value)}" if isinstance(value, int) or value == int(value) else f"{value:.2f}"
+    """Форматирует число с учётом PRICE_DECIMAL_PLACES."""
+    return f"{float(value):.{PRICE_DECIMAL_PLACES}f}"
+
+
+def truncate_text(text: str, max_length: int, suffix: str = "...") -> str:
+    """Обрезает текст до указанной длины, добавляя суффикс, если текст слишком длинный."""
+    if len(text) <= max_length:
+        return text
+    return text[:max_length - len(suffix)] + suffix
 
 
 def generate_cart_keyboard(user, items, cart_quantity: int, cart_total, page: int = 1, items_per_page: int = 5) -> InlineKeyboardMarkup:
@@ -33,11 +41,20 @@ def generate_cart_keyboard(user, items, cart_quantity: int, cart_total, page: in
         # Отображаем каждый товар
         for item in current_items:
             product = item.product
-            item_total = product.price * item.quantity
+            item_total = float(product.price) * \
+                item.quantity  # Приводим к float
             formatted_item_total = _format_number(item_total)
+            if SHOW_PARENT_CATEGORY and product.category:
+                product_display = f"{product.category.name}{CATEGORY_SEPARATOR}{product.name}"
+                product_display = truncate_text(
+                    product_display, MAX_BUTTON_TEXT_LENGTH)
+            else:
+                product_display = truncate_text(
+                    product.name, MAX_BUTTON_TEXT_LENGTH)
+            button_text = f"{product_display} x{item.quantity} | {formatted_item_total} {CART_CURRENCY}"
             keyboard.inline_keyboard.append([
                 InlineKeyboardButton(
-                    text=f"{product.name} x{item.quantity} | {formatted_item_total} ₽",
+                    text=button_text,
                     callback_data="noop"
                 )
             ])
@@ -68,13 +85,13 @@ def generate_cart_keyboard(user, items, cart_quantity: int, cart_total, page: in
         # Итоговая сумма
         keyboard.inline_keyboard.append([
             InlineKeyboardButton(
-                text=f"Итого: {formatted_total} ₽", callback_data="noop")
+                text=f"Итого: {formatted_total} {CART_CURRENCY}", callback_data="noop")
         ])
 
         # Кнопка оформления заказа
         keyboard.inline_keyboard.append([
             InlineKeyboardButton(
-                text=f"✅ Оформить за {formatted_total} ₽", callback_data="checkout")
+                text=f"✅ Оформить за {formatted_total} {CART_CURRENCY}", callback_data="checkout")
         ])
 
         # Кнопки "Очистить корзину" и "Назад"
@@ -119,7 +136,7 @@ def generate_confirmation_keyboard(total) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
-                text=f"Заказ на {formatted_total} ₽. Оформить?", callback_data="confirm"),
+                text=f"Заказ на {formatted_total} {CART_CURRENCY}. Оформить?", callback_data="confirm"),
             InlineKeyboardButton(text="✏️ Изменить", callback_data="edit")
         ],
         [
