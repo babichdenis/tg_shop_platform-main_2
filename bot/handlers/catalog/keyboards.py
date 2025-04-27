@@ -10,13 +10,14 @@ from bot.core.config import (
     CATEGORIES_PER_PAGE, PRODUCTS_PER_PAGE, PRICE_DECIMAL_PLACES, CART_CURRENCY,
     PAGINATION_PREV_EMOJI, PAGINATION_NEXT_EMOJI, PAGINATION_TEXT_FORMAT,
     PRICE_LIST_EMOJI, PRICE_LIST_LABEL, PRICE_LIST_CALLBACK,
-    BACK_BUTTON_EMOJI, BACK_BUTTON_TEXT, MENU_BUTTON_TEXT, NOOP_CALLBACK
+    BACK_BUTTON_EMOJI, BACK_BUTTON_TEXT, MENU_BUTTON_TEXT, NOOP_CALLBACK,
+    SHOW_PRODUCT_PRICE_IN_CATALOG
 )
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 logger.info(
-    "Загружен keyboards.py версии 2025-04-23-2 с async_get_cart_quantity и поддержкой PER_ROW")
+    "Загружен keyboards.py версии 2025-04-23-3 с поддержкой SHOW_PRODUCT_PRICE_IN_CATALOG")
 
 
 @sync_to_async
@@ -100,7 +101,6 @@ async def build_categories_keyboard(categories: List[Category], parent_id: str, 
     except Exception as e:
         logger.error(
             f"Ошибка при получении данных корзины для пользователя {user.telegram_id}: {e}")
-        # Этот текст уже вынесен в cart/utils.py, оставляем как fallback
         cart_text = "🛒 Корзина: ошибка"
     buttons.append([InlineKeyboardButton(
         text=cart_text,
@@ -150,9 +150,14 @@ async def build_products_keyboard(category_id: int, page: int, products: List[Pr
     # Группируем товары по PRODUCTS_PER_ROW в ряд
     row = []
     for product in products:
-        price = float(product.price)
-        price_str = f"{price:.{PRICE_DECIMAL_PLACES}f} {CART_CURRENCY}"
-        button_text = f"{product.name[:MAX_BUTTON_TEXT_LENGTH]} ({price_str})"
+        # Формируем текст кнопки
+        if SHOW_PRODUCT_PRICE_IN_CATALOG:
+            price = float(product.price)
+            price_str = f"{price:.{PRICE_DECIMAL_PLACES}f} {CART_CURRENCY}"
+            button_text = f"{product.name[:MAX_BUTTON_TEXT_LENGTH]} ({price_str})"
+        else:
+            button_text = product.name[:MAX_BUTTON_TEXT_LENGTH]
+
         row.append(InlineKeyboardButton(
             text=button_text,
             callback_data=f"product_{product.id}"
@@ -193,7 +198,6 @@ async def build_products_keyboard(category_id: int, page: int, products: List[Pr
     except Exception as e:
         logger.error(
             f"Ошибка при получении данных корзины для пользователя {user.telegram_id}: {e}")
-        # Этот текст уже вынесен в cart/utils.py, оставляем как fallback
         cart_text = "🛒 Корзина: ошибка"
     buttons.append([InlineKeyboardButton(
         text=f"{PRICE_LIST_EMOJI} {PRICE_LIST_LABEL}",

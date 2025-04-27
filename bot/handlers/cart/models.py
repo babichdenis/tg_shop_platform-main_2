@@ -93,6 +93,43 @@ def get_cart_items(user):
         raise
 
 
+def add_to_cart(user, product_id, quantity: int = 1):
+    """Добавляет товар в корзину или увеличивает его количество, если он уже есть."""
+    if not isinstance(user, TelegramUser):
+        raise TypeError(f"Ожидается объект TelegramUser, получен {type(user)}")
+    try:
+        cart = get_cart(user)
+        # Проверяем, есть ли уже этот товар в корзине
+        cart_item = CartItem.objects.filter(
+            cart=cart,
+            product_id=product_id,
+            is_active=True
+        ).first()
+
+        if cart_item:
+            # Если товар уже есть, увеличиваем количество
+            cart_item.quantity += quantity
+            cart_item.save()
+            logger.info(
+                f"Количество товара {product_id} в корзине ID {cart.id} увеличено до {cart_item.quantity}.")
+        else:
+            # Если товара нет, создаём новую запись
+            cart_item = CartItem.objects.create(
+                cart=cart,
+                product_id=product_id,
+                quantity=quantity,
+                is_active=True
+            )
+            logger.info(
+                f"Товар {product_id} добавлен в корзину ID {cart.id} с количеством {quantity}.")
+
+        return cart_item
+    except Exception as e:
+        logger.error(
+            f"Ошибка при добавлении товара {product_id} в корзину пользователя {user.telegram_id}: {e}")
+        raise
+
+
 def update_cart_item_quantity(user, product_id, delta):
     """Обновляет количество товара в корзине."""
     if not isinstance(user, TelegramUser):
@@ -328,6 +365,11 @@ def async_get_cart(user):
 @sync_to_async
 def async_get_cart_items(user):
     return get_cart_items(user)
+
+
+@sync_to_async
+def async_add_to_cart(user, product_id, quantity: int = 1):
+    return add_to_cart(user, product_id, quantity)
 
 
 @sync_to_async

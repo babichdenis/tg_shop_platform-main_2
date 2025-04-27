@@ -5,7 +5,7 @@ from aiogram.utils.text_decorations import html_decoration as html
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 
-from .models import async_get_cart, async_get_cart_items, async_get_cart_details, async_get_cart_quantity, async_get_cart_total, async_get_order_details
+from .models import async_get_cart, async_get_cart_items, async_get_cart_quantity, async_get_cart_total, async_get_cart_details, async_get_order_details
 from .keyboards import generate_cart_keyboard, generate_back_keyboard, generate_skip_keyboard, generate_confirmation_keyboard, generate_empty_cart_keyboard
 from bot.core.config import SUBSCRIPTION_CHANNEL_ID, SUBSCRIPTION_GROUP_ID, CART_ITEMS_PER_PAGE, PRICE_DECIMAL_PLACES, CART_EMOJI, CART_LABEL, CART_CURRENCY, CART_EMPTY_TEXT
 from bot.handlers.start.subscriptions import check_subscriptions
@@ -173,9 +173,14 @@ async def show_cart(user, message: Message | CallbackQuery, page: int = 1) -> No
     cart_id = cart.id
 
     # Получаем данные корзины
+    # Сумма quantity всех CartItem
     cart_quantity = await async_get_cart_quantity(user)
     cart_total = await async_get_cart_total(user)
     items_text, _, first_item_photo = await async_get_cart_details(cart_id)
+
+    # Логируем для проверки
+    logger.info(
+        f"Количество элементов (CartItem): {len(items)}, общее количество товаров: {cart_quantity}")
 
     # Форматируем сумму
     formatted_total = f"{float(cart_total):.{PRICE_DECIMAL_PLACES}f}"

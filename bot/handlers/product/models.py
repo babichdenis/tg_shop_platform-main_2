@@ -3,7 +3,7 @@ from django_app.shop.models import Product, Cart, CartItem
 from asgiref.sync import sync_to_async
 
 logger = logging.getLogger(__name__)
-logger.info("Загружен product/models.py версии 2025-04-23-2")
+logger.info("Загружен product/models.py версии 2025-04-23-3")
 
 
 async def get_product_by_id(product_id: int):
@@ -44,10 +44,15 @@ def sync_update_cart_item(cart, product, quantity):
             defaults={'quantity': quantity}
         )
         if not created:
-            item.quantity = quantity
+            # Увеличиваем количество вместо перезаписи
+            old_quantity = item.quantity
+            item.quantity += quantity
             item.save()
-        logger.info(
-            f"Элемент корзины ID {item.id} {'создан' if created else 'обновлён'} для продукта ID {product.id}")
+            logger.info(
+                f"Элемент корзины ID {item.id} обновлён для продукта ID {product.id}, количество увеличено с {old_quantity} до {item.quantity}")
+        else:
+            logger.info(
+                f"Элемент корзины ID {item.id} создан для продукта ID {product.id} с количеством {quantity}")
         return item
     except Exception as e:
         logger.error(
