@@ -17,13 +17,17 @@ async def main_menu_keyboard(bot, user_id):
     # Получаем объект пользователя
     user, _ = await async_get_or_create_user(tg_id=user_id)
 
-    # Если пользователь подписан, показываем все кнопки
+    # Формируем текст кнопки корзины
+    cart_quantity = await async_get_cart_quantity(user)
+    cart_text = f"🛒 Корзина: {cart_quantity} шт." if cart_quantity > 0 else "🛒 Корзина"
+
+    # Определяем кнопки (структура как на скриншоте: 2 кнопки в ряду)
     if has_subscription:
+        # Кнопки для подписанных пользователей
         keyboard.inline_keyboard.extend([
             [
                 InlineKeyboardButton(
                     text="🛍 Каталог", callback_data="catalog"),
-                # Начинаем с первой страницы
                 InlineKeyboardButton(text="📋 Прайс-лист",
                                      callback_data="price_list_1"),
             ],
@@ -32,29 +36,30 @@ async def main_menu_keyboard(bot, user_id):
                     text="👤 Профиль", callback_data="profile"),
                 InlineKeyboardButton(text="❓ FAQ", callback_data="faq"),
             ],
+            [
+                InlineKeyboardButton(text=cart_text, callback_data="cart"),
+                InlineKeyboardButton(text="ℹ️ О боте", callback_data="about"),
+            ],
         ])
-
-        # Добавляем кнопку корзины, если есть товары
-        cart_quantity = await async_get_cart_quantity(user)
-        if cart_quantity > 0:
-            keyboard.inline_keyboard.append([
-                InlineKeyboardButton(
-                    text=f"🛒 Корзина: {cart_quantity} шт.",
-                    callback_data="cart"
-                )
-            ])
-        else:
-            keyboard.inline_keyboard.append([
-                InlineKeyboardButton(text="🛒 Корзина", callback_data="cart")
-            ])
-
-    # Если не подписан, показываем только кнопки, не требующие подписки
     else:
+        # Кнопки для неподписанных пользователей (с замочками)
         keyboard.inline_keyboard.extend([
             [
+                InlineKeyboardButton(text="🔒 🛍 Каталог",
+                                     callback_data="locked_catalog"),
+                InlineKeyboardButton(text="🔒 📋 Прайс-лист",
+                                     callback_data="locked_price_list"),
+            ],
+            [
+                InlineKeyboardButton(text="🔒 👤 Профиль",
+                                     callback_data="locked_profile"),
                 InlineKeyboardButton(text="❓ FAQ", callback_data="faq"),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=f"🔒 {cart_text}", callback_data="locked_cart"),
                 InlineKeyboardButton(text="ℹ️ О боте", callback_data="about"),
-            ]
+            ],
         ])
 
     return keyboard

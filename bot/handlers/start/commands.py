@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 @router.message(F.text == "/start")
 async def start_command(message: Message):
-    """Обработчик команды /start с проверкой подписки."""
+    """Обработчик команды /start."""
     user_id = message.from_user.id
     logger.info(f"Получена команда /start от пользователя {user_id}")
 
@@ -29,17 +29,6 @@ async def start_command(message: Message):
         language_code=user_data.language_code
     )
 
-    # Проверка подписки (для информирования)
-    subscription_message = ""
-    if SUBSCRIPTION_CHANNEL_ID or SUBSCRIPTION_GROUP_ID:
-        subscription_result, message_text = await check_subscriptions(message.bot, user_id)
-        if not subscription_result:
-            subscription_message = (
-                f"{message_text}\n\n"
-                "ℹ️ После подписки вы получите доступ к каталогу, корзине и профилю.\n"
-                "Команды /faq и /about доступны без подписки.\n"
-            )
-
     # Проверка наличия товаров в корзине
     try:
         has_cart = (await async_get_cart_quantity(user)) > 0
@@ -49,8 +38,6 @@ async def start_command(message: Message):
         has_cart = False
 
     welcome_text = welcome_message(user_data.first_name, has_cart)
-    if subscription_message:
-        welcome_text += f"\n{subscription_message}"
 
     try:
         await message.answer(
@@ -84,7 +71,9 @@ async def profile_command(message: Message):
             await message.answer(
                 message_text,
                 disable_web_page_preview=True,
-                parse_mode="Markdown"
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                                                  [InlineKeyboardButton(text="⬅️ В меню", callback_data="main_menu")]])
             )
             return
 
@@ -101,28 +90,4 @@ async def profile_command(message: Message):
     except TelegramBadRequest as e:
         logger.error(
             f"Ошибка при отправке профиля пользователю {user_id}: {e}")
-        await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
-
-
-@router.message(F.text == "/about")
-async def about_command(message: Message):
-    """Обработчик команды /about."""
-    user_id = message.from_user.id
-    logger.info(f"Получена команда /about от пользователя {user_id}")
-
-    text = (
-        "ℹ️ О нас\n\n"
-        "Мы - ваш любимый магазин! 🛍️\n"
-        "Здесь вы найдёте всё, что нужно, и даже больше!\n\n"
-        f"📩 По любым вопросам обращайтесь в поддержку: {SUPPORT_TELEGRAM}"
-    )
-
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ В меню", callback_data="main_menu")]
-    ])
-
-    try:
-        await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
-    except TelegramBadRequest as e:
-        logger.error(f"Ошибка при отправке /about пользователю {user_id}: {e}")
         await message.answer(text, reply_markup=keyboard, parse_mode="HTML")

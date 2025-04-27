@@ -1,15 +1,15 @@
-# bot/handlers/start/handlers.py
 import logging
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
 from bot.handlers.start.messages import welcome_message
 from bot.handlers.start.keyboards import main_menu_keyboard
-from bot.core.utils import get_or_create_user
 from bot.handlers.start.subscriptions import check_subscriptions
 from bot.core.config import SUBSCRIPTION_CHANNEL_ID, SUBSCRIPTION_GROUP_ID
+from bot.handlers.cart.models import async_get_or_create_user, async_get_cart_quantity
 
 router = Router()
 logger = logging.getLogger(__name__)
+
 
 @router.callback_query(F.data == "main_menu")
 async def back_to_main_menu(callback: CallbackQuery):
@@ -17,25 +17,15 @@ async def back_to_main_menu(callback: CallbackQuery):
     user_id = callback.from_user.id
     logger.info(f"Пользователь {user_id} возвращается в главное меню.")
 
-    user, _ = await get_or_create_user(user_id)
-
-    # Проверка подписки (для информирования)
-    subscription_message = ""
-    if SUBSCRIPTION_CHANNEL_ID or SUBSCRIPTION_GROUP_ID:
-        subscription_result, message_text = await check_subscriptions(callback.bot, user_id)
-        if not subscription_result:
-            subscription_message = (
-                f"{message_text}\n\n"
-                "ℹ️ После подписки вы получите доступ к каталогу, корзине и профилю.\n"
-                "Команды /faq и /about доступны без подписки.\n"
-            )
-
-    # Формируем приветственное сообщение
-    from bot.handlers.cart.models import get_cart_quantity
-    has_cart = await get_cart_quantity(user) > 0
+    user, _ = await async_get_or_create_user(
+        tg_id=user_id,
+        first_name=callback.from_user.first_name,
+        last_name=callback.from_user.last_name,
+        username=callback.from_user.username,
+        language_code=callback.from_user.language_code
+    )
+    has_cart = await async_get_cart_quantity(user) > 0
     welcome_text = welcome_message(callback.from_user.first_name, has_cart)
-    if subscription_message:
-        welcome_text += f"\n{subscription_message}"
 
     try:
         await callback.message.edit_text(
