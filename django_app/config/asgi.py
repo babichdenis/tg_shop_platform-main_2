@@ -1,14 +1,16 @@
 import os
 import logging
 from django.core.asgi import get_asgi_application
+from channels.routing import ProtocolTypeRouter
+from channels.security.websocket import AllowedHostsOriginValidator
 
 # Настройка базового конфигурации логирования
 logging.basicConfig(
-    level=logging.INFO,  # Уровень логирования: INFO
-    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',  # Формат сообщения
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
     handlers=[
-        logging.FileHandler("logs/asgi.log"),  # Запись логов в файл
-        logging.StreamHandler()  # Вывод логов в консоль
+        logging.FileHandler("logs/asgi.log"),
+        logging.StreamHandler()
     ]
 )
 
@@ -16,13 +18,20 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Установка переменной окружения для настроек Django
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'django_app.config.settings')
 logger.info('Переменная окружения DJANGO_SETTINGS_MODULE установлена.')
 
 try:
     # Получение ASGI-приложения Django
-    application = get_asgi_application()
+    django_asgi_app = get_asgi_application()
     logger.info('ASGI-приложение Django успешно инициализировано.')
 except Exception as e:
-    logger.error('Ошибка при инициализации ASGI-приложения Django:', exc_info=True)
+    logger.error(
+        'Ошибка при инициализации ASGI-приложения Django:', exc_info=True)
     raise
+
+# Настройка маршрутизации для ASGI
+application = ProtocolTypeRouter({
+    "http": django_asgi_app,
+    "websocket": AllowedHostsOriginValidator(),
+})

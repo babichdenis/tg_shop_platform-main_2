@@ -83,7 +83,7 @@ def get_cart_items(user):
             cart__user=user,
             cart__is_active=True,
             is_active=True
-        ).select_related("product").select_related("product__category"))
+        ).select_related("product").select_related("product__category").order_by('id'))
         logger.info(
             f"Найдено {len(items)} активных элементов в корзине пользователя {user.telegram_id}.")
         return items

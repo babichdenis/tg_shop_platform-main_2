@@ -55,7 +55,8 @@ def generate_cart_keyboard(user, items, cart_quantity: int, cart_total, page: in
             keyboard.inline_keyboard.append([
                 InlineKeyboardButton(
                     text=button_text,
-                    callback_data="noop"
+                    # Изменили callback_data
+                    callback_data=f"product_{product.id}"
                 )
             ])
             keyboard.inline_keyboard.append([

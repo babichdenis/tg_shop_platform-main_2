@@ -8,15 +8,11 @@ load_dotenv()
 # Базовая директория проекта
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# YOOKASSA_SHOP_ID = os.getenv('YOOKASSA_SHOP_ID')
-# YOOKASSA_API_KEY = os.getenv('YOOKASSA_API_KEY')
-# YOOKASSA_RETURN_URL = os.getenv('YOOKASSA_RETURN_URL', 'https://example.com/payment-callback/')
-
 # Секретный ключ
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'fallback_secret_key')
 
 # Режим отладки
-DEBUG = os.getenv('DJANGO_DEBUG', 'False') == 'True'
+DEBUG = os.getenv('DJANGO_DEBUG', 'True') == 'True'
 
 # Разрешенные хосты
 ALLOWED_HOSTS = ["*"]
@@ -67,22 +63,31 @@ TEMPLATES = [
 WSGI_APPLICATION = 'django_app.config.wsgi.application'
 ASGI_APPLICATION = 'django_app.config.asgi.application'
 
-# Настройка базы данных
+# Настройка базы данных для асинхронной работы
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
+        'ENGINE': 'django.contrib.db.backends.postgresql',
         'NAME': os.getenv('POSTGRES_DB'),
         'USER': os.getenv('POSTGRES_USER'),
         'PASSWORD': os.getenv('POSTGRES_PASSWORD'),
         'HOST': os.getenv('POSTGRES_HOST', 'db'),
         'PORT': os.getenv('POSTGRES_PORT', '5432'),
+        'OPTIONS': {
+            'sslmode': 'prefer',
+        },
+        'CONN_MAX_AGE': 0,  # Отключаем постоянные соединения для асинхронной работы
     }
 }
 
+# Настройка асинхронного адаптера для PostgreSQL
+DATABASES['default']['ENGINE'] = 'django.db.backends.postgresql'
+# Отключаем транзакции на уровне запросов
+DATABASES['default']['ATOMIC_REQUESTS'] = False
+
 # django_app/settings.py
 STATIC_URL = '/static/'
-STATICFILES_DIRS = [BASE_DIR / "static"]  # Путь к папке django_app/static/
-STATIC_ROOT = BASE_DIR / "staticfiles"    # Путь, куда собираются файлы при collectstatic
+STATICFILES_DIRS = [BASE_DIR / "static"]
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # Медиа файлы
 MEDIA_URL = '/media/'
@@ -97,5 +102,5 @@ USE_TZ = True
 # Поле по умолчанию
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-
+# Токен бота
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
