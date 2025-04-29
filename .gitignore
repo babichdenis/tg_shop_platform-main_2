@@ -151,6 +151,7 @@ cython_debug/
 # Temporary files
 tmp/
 temp/
+.txt
 
 # Ignore media files except specific ones (e.g., placeholder.png)
 media/*
